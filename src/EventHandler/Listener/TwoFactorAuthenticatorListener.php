@@ -1,9 +1,9 @@
 <?php
 
-namespace Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\EventHandler\Listener;
+namespace Dakataa\Security\TwoFactorAuthenticator\EventHandler\Listener;
 
 
-use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\TwoFactorAuthenticatorProvider;
+use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticatorProvider;
 use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Security\Core\Exception\BadCredentialsException;

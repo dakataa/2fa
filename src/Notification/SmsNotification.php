@@ -1,8 +1,8 @@
 <?php
 
-namespace Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\Notification;
+namespace Dakataa\Security\TwoFactorAuthenticator\Notification;
 
-use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\TwoFactorAuthenticatorEntityInterface;
+use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticatorEntityInterface;
 
 readonly class SmsNotification
 {

@@ -2,9 +2,9 @@
 
 namespace Dakataa\Security\TwoFactorAuthenticator;
 
-use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\Authenticator\TwoFactorAuthenticatorInterface;
-use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\EventHandler\Event\TwoFactorEntityInvokingEvent;
-use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\EventHandler\Event\TwoFactorSetupEvent;
+use Dakataa\Security\TwoFactorAuthenticator\Authenticator\TwoFactorAuthenticatorInterface;
+use Dakataa\Security\TwoFactorAuthenticator\EventHandler\Event\TwoFactorEntityInvokingEvent;
+use Dakataa\Security\TwoFactorAuthenticator\EventHandler\Event\TwoFactorSetupEvent;
 use Exception;
 use Symfony\Component\DependencyInjection\Attribute\AutowireLocator;
 use Symfony\Component\DependencyInjection\Container;

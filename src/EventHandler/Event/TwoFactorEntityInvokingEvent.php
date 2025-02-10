@@ -1,8 +1,8 @@
 <?php
 
-namespace Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\EventHandler\Event;
+namespace Dakataa\Security\TwoFactorAuthenticator\EventHandler\Event;
 
-use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\TwoFactorAuthenticatorEntityInterface;
+use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticatorEntityInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 use Symfony\Contracts\EventDispatcher\Event;
 

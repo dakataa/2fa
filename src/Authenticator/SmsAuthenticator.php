@@ -1,12 +1,12 @@
 <?php
 
-namespace Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\Authenticator;
+namespace Dakataa\Security\TwoFactorAuthenticator\Authenticator;
 
 
-use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\Notification\SmsNotification;
-use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\Session\Storage\TwoFactorAuthenticatorSessionStorageInterface;
-use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\Session\TwoFactorSession;
-use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\TwoFactorAuthenticatorEntityInterface;
+use Dakataa\Security\TwoFactorAuthenticator\Notification\SmsNotification;
+use Dakataa\Security\TwoFactorAuthenticator\Session\Storage\TwoFactorAuthenticatorSessionStorageInterface;
+use Dakataa\Security\TwoFactorAuthenticator\Session\TwoFactorSession;
+use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticatorEntityInterface;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 

@@ -1,6 +1,6 @@
 <?php
 
-namespace Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\Session;
+namespace Dakataa\Security\TwoFactorAuthenticator\Session;
 
 
 use Serializable;

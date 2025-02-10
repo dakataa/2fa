@@ -1,10 +1,10 @@
 <?php
 
-namespace Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\Authenticator;
+namespace Dakataa\Security\TwoFactorAuthenticator\Authenticator;
 
 
-use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\Session\Storage\TwoFactorAuthenticatorSessionStorageInterface;
-use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\TwoFactorAuthenticatorEntityInterface;
+use Dakataa\Security\TwoFactorAuthenticator\Session\Storage\TwoFactorAuthenticatorSessionStorageInterface;
+use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticatorEntityInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 
 class EmailAuthenticator implements TwoFactorAuthenticatorInterface {

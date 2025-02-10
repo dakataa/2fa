@@ -1,9 +1,9 @@
 <?php
 
-namespace Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\Authenticator;
+namespace Dakataa\Security\TwoFactorAuthenticator\Authenticator;
 
 
-use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\TwoFactorAuthenticatorEntityInterface;
+use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticatorEntityInterface;
 use Exception;
 use OTPHP\TOTP;
 use Symfony\Component\DependencyInjection\ParameterBag\ParameterBagInterface;

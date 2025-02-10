@@ -1,9 +1,9 @@
 <?php
 
-namespace Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\Session\Storage;
+namespace Dakataa\Security\TwoFactorAuthenticator\Session\Storage;
 
-use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\Session\TwoFactorSessionInterface;
-use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticator\TwoFactorAuthenticatorEntityInterface;
+use Dakataa\Security\TwoFactorAuthenticator\Session\TwoFactorSessionInterface;
+use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticatorEntityInterface;
 use DateInterval;
 use Exception;
 use Psr\Cache\CacheItemPoolInterface;
