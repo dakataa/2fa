@@ -1,0 +1,23 @@
+{
+  "name": "dakataa/2fa",
+  "description": "Symfony Security Two Factor Authenticator (2FA)",
+  "type": "library",
+  "license": "MIT",
+  "autoload": {
+    "psr-4": {
+      "Dakataa\\Security\\TwoFactorAuthenticator\\": "src/"
+    }
+  },
+  "authors": [
+    {
+      "name": "Yordan Lazarov",
+      "email": "yor.lazarov@gmail.com"
+    }
+  ],
+  "minimum-stability": "stable",
+  "require": {
+    "php": ">=8.1",
+    "symfony/framework-bundle": "^7.0",
+    "symfony/security": "^2.0"
+  }
+}

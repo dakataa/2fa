@@ -1,0 +1,9 @@
+vendor/
+composer.lock
+phpunit.xml
+.idea/
+
+###> Mac Hidden Files ###
+.DS_Store
+**/.DS_Store
+###< Mac Hidden Files ###
