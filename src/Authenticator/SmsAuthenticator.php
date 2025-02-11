@@ -10,7 +10,7 @@ use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticatorEntityInterfac
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 
-readonly class SmsAuthenticator implements TwoFactorAuthenticatorInterface
+class SmsAuthenticator implements TwoFactorAuthenticatorInterface
 {
 
     public function __construct(

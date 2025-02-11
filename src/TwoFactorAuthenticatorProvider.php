@@ -45,8 +45,11 @@ class TwoFactorAuthenticatorProvider
             return null;
         }
 
-        $fqcn = __NAMESPACE__.'\\Authenticator\\'.Container::camelize($authenticator).'Authenticator';
+        if ($this->serviceLocator->has($authenticator)) {
+            return $this->serviceLocator->get($authenticator);
+        }
 
+        $fqcn = __NAMESPACE__.'\\Authenticator\\'.Container::camelize($authenticator).'Authenticator';
         if ($this->serviceLocator->has($fqcn)) {
             return $this->serviceLocator->get($fqcn);
         }
