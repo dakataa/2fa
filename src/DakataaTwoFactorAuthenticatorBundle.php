@@ -19,7 +19,29 @@ class DakataaTwoFactorAuthenticatorBundle extends AbstractBundle
             ->children()
                 ->booleanNode('enabled')
                     ->defaultValue(false)
-                ->end();
+                ->end()
+                ->arrayNode('code')
+                    ->children()
+                        ->scalarNode('field_path')
+                            ->defaultValue('code')
+                            ->cannotBeEmpty()
+                        ->end()
+                        ->scalarNode('form')
+                            ->defaultValue('/2fa/form')
+                            ->cannotBeEmpty()
+                        ->end()
+                        ->scalarNode('check')
+                            ->defaultValue('/2fa/check')
+                            ->cannotBeEmpty()
+                        ->end()
+                    ->end()
+                ->end()
+                ->scalarNode('username_path')
+                    ->defaultValue('username')
+                    ->cannotBeEmpty()
+                ->end()
+            ->end()
+        ;
 	}
 
 	public function loadExtension(array $config, ContainerConfigurator $container, ContainerBuilder $builder): void
@@ -30,7 +52,7 @@ class DakataaTwoFactorAuthenticatorBundle extends AbstractBundle
 
         $setParameters = function(array $parameters, array $path) use($builder, &$setParameters) {
             foreach ($parameters as $parameter => $value) {
-                if(is_array($parameter)) {
+                if(is_array($value)) {
                     $setParameters($value, [...$path, $parameter]);
                 } else {
                     $key = implode('.', [...$path, $parameter]);
@@ -39,7 +61,7 @@ class DakataaTwoFactorAuthenticatorBundle extends AbstractBundle
             }
         };
 
-        $setParameters($config, [$this->getName()]);
+        $setParameters($config, ['dakataa_two_factor_authenticator']);
 	}
 
 	public function prependExtension(

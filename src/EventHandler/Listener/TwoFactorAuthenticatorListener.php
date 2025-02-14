@@ -3,69 +3,203 @@
 namespace Dakataa\Security\TwoFactorAuthenticator\EventHandler\Listener;
 
 
-use Dakataa\Security\TwoFactorAuthenticator\DakataaTwoFactorAuthenticatorBundle;
+use Dakataa\Security\TwoFactorAuthenticator\Authentication\Token\TwoFactorAuthenticationToken;
 use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticatorProvider;
-use Symfony\Bundle\SecurityBundle\Security\FirewallMap;
+use Exception;
+use Symfony\Bundle\SecurityBundle\Security;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\DependencyInjection\ParameterBag\ParameterBagInterface;
 use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\Session\SessionInterface;
+use Symfony\Component\HttpKernel\Event\RequestEvent;
+use Symfony\Component\PropertyAccess\PropertyAccess;
+use Symfony\Component\Routing\RouterInterface;
 use Symfony\Component\Security\Core\Exception\BadCredentialsException;
+use Symfony\Component\Security\Core\User\UserInterface;
+use Symfony\Component\Security\Core\User\UserProviderInterface;
+use Symfony\Component\Security\Http\Authenticator\AuthenticatorInterface;
+use Symfony\Component\Security\Http\Authenticator\Passport\Badge\UserBadge;
+use Symfony\Component\Security\Http\Authenticator\Passport\Credentials\PasswordCredentials;
+use Symfony\Component\Security\Http\Event\AuthenticationTokenCreatedEvent;
 use Symfony\Component\Security\Http\Event\LoginSuccessEvent;
-use Symfony\Component\Security\Http\FirewallMapInterface;
+use Symfony\Component\Security\Http\HttpUtils;
+use Symfony\Component\Security\Http\SecurityRequestAttributes;
+use Throwable;
 
 final class TwoFactorAuthenticatorListener
 {
-    public function __construct(
-        private readonly TwoFactorAuthenticatorProvider $twoFactorProvider,
-        private readonly ParameterBagInterface $parameterBag
-    ) {
+    protected bool $enabled = false;
 
+    public function __construct(
+        private HttpUtils $httpUtils,
+        private RouterInterface $router,
+        private readonly TwoFactorAuthenticatorProvider $twoFactorProvider,
+        private readonly ParameterBagInterface $parameterBag,
+        private readonly UserProviderInterface $userProvider,
+        private readonly Security $security
+
+    ) {
+        $this->enabled = $this->parameterBag->get('dakataa_two_factor_authenticator.enabled');
+    }
+
+    #[AsEventListener(event: AuthenticationTokenCreatedEvent::class)]
+    public function onAuthenticationTokenCreatedEvent(AuthenticationTokenCreatedEvent $event): void
+    {
+        if (!$this->enabled) {
+            return;
+        }
+
+        if(!$event->getPassport()->hasBadge(PasswordCredentials::class)) {
+            return;
+        }
+
+        $parentToken = $event->getAuthenticatedToken();
+        $token = new TwoFactorAuthenticationToken($parentToken->getUser());
+        $event->setAuthenticatedToken($token);
     }
 
     #[AsEventListener(event: LoginSuccessEvent::class)]
     public function onLoginSuccessEvent(LoginSuccessEvent $event): void
     {
-        if(!$this->parameterBag->get('dakataa_two_factor_authenticator.enabled')) {
+        if (!$this->enabled) {
             return;
         }
 
-        $user = $event->getUser();
+        $token = $event->getAuthenticatedToken();
+        if (false === $token instanceof TwoFactorAuthenticationToken) {
+            return;
+        }
+
+        $twoFactorAuthenticator = $this->twoFactorProvider->getAuthenticator($token->getUser());
+        if (!$twoFactorAuthenticator) {
+            return;
+        }
+
+        $twoFactorEntity = $this->twoFactorProvider->getEntity($token->getUser());
+        if ($twoFactorAuthenticator->isDispatched($twoFactorEntity)) {
+            $twoFactorAuthenticator->dispatch($twoFactorEntity);
+        }
+
+        $request = $event->getRequest();
+        $response = match ($request->getContentTypeFormat()) {
+            'json' => new JsonResponse([
+                'challenge' => '2fa',
+            ]),
+            default => (function () use ($request) {
+                $codeForm = $this->parameterBag->get('dakataa_two_factor_authenticator.code.form');
+
+                try {
+                    if (!$this->router->getRouteCollection()->get($codeForm)) {
+                        $this->router->match($codeForm);
+                    }
+                } catch (Throwable) {
+                    throw new InvalidConfigurationException(sprintf('Missing route for 2FA code form: %s', $codeForm));
+                }
+
+                return $this->httpUtils->createRedirectResponse(
+                    $request,
+                    $this->httpUtils->generateUri($request, $codeForm)
+                );
+            })()
+        };
+
+        $event->setResponse($response);
+    }
+
+    #[AsEventListener(event: RequestEvent::class)]
+    public function onRequestEvent(RequestEvent $event): void
+    {
+        if (!$this->enabled) {
+            return;
+        }
+
+        $codeCheckRoute = $this->parameterBag->get('dakataa_two_factor_authenticator.code.check');
+        if (!$this->httpUtils->checkRequestPath($event->getRequest(), $codeCheckRoute)) {
+            return;
+        }
+
+        try {
+            if (!$this->router->getRouteCollection()->get($codeCheckRoute)) {
+                $this->router->match($codeCheckRoute);
+            }
+        } catch (Throwable) {
+            throw new InvalidConfigurationException(sprintf('Missing route for 2FA code check: %s', $codeCheckRoute));
+        }
+
         $request = $event->getRequest();
 
+        $getAccessorPath = fn(string $path) => implode(
+            '',
+            array_map(fn(string $v) => sprintf('[%s]', $v),
+                explode(
+                    '.',
+                    trim(
+                        str_replace(['[', ']'],
+                            ['', '.'],
+                            $this->parameterBag->get('dakataa_two_factor_authenticator.code.field_path')),
+                        '.'
+                    )
+                )
+            )
+        );
 
-        $twoFactorAuthenticator = $this->twoFactorProvider->getAuthenticator($user);
-        $twoFactorEntity = $this->twoFactorProvider->getEntity($user);
-        if ($twoFactorAuthenticator) {
-            try {
-                if (!$twoFactorAuthenticator->supports($twoFactorEntity)) {
-                    $this->twoFactorProvider->setupProvider($user);
-                    throw new BadCredentialsException('Two Factor Authentication not supported.');
-                }
+        try {
+            $codeAccessorPath = $getAccessorPath('dakataa_two_factor_authenticator.code.field_path');
+            $usernameAccessPath =  $getAccessorPath('dakataa_two_factor_authenticator.username_path');
 
-                if ($twoFactorAuthenticator->isDispatched($twoFactorEntity) && $request->getPayload()->has('code')) {
-                    if (!$twoFactorAuthenticator->validate($twoFactorEntity, $request->getPayload()->getString('code'))) {
-                        throw new BadCredentialsException(
-                            'Invalid Two Factor Credentials. Please provide a valid Auth code.'
-                        );
-                    }
-                } else {
-                    $twoFactorAuthenticator->dispatch($twoFactorEntity);
+            $requestData = match ($request->getContentTypeFormat()) {
+                'form' => $request->request->all(),
+                'json' => $request->getPayload()->all(),
+                default => array_merge(
+                    $request->request->all(),
+                    $request->getPayload()->all(),
+                    $request->query->all()
+                )
+            };
 
-                    throw new BadCredentialsException('Two Factor Authentication required.');
-                }
-            } catch (BadCredentialsException $e) {
-                $event->setResponse(new JsonResponse([
-                    'error' => $e->getMessage(),
-                    'requirements' => [
-                        'twoFactorAuthenticator' => [
-                            'authenticator' => $twoFactorEntity->getTwoFactorAuthenticator(),
-                            'fields' => [
-                                'code',
-                            ],
+            $propertyAccessor = PropertyAccess::createPropertyAccessorBuilder()->disableExceptionOnInvalidPropertyPath()->getPropertyAccessor();
+            $username = $request->getSession()->isStarted() ? $request->getSession()->get(SecurityRequestAttributes::LAST_USERNAME) : $propertyAccessor->getValue($requestData, $usernameAccessPath);
+            $code = $propertyAccessor->getValue($requestData, $codeAccessorPath);
+
+            if (!$code) {
+                throw new BadCredentialsException('Invalid Auth Code.');
+            }
+
+            $user = $this->userProvider->loadUserByIdentifier($username);
+            $twoFactorAuthenticator = $this->twoFactorProvider->getAuthenticator($user);
+            if (!$twoFactorAuthenticator) {
+                throw new Exception('Two Factor Authenticator not configured for this user.');
+            }
+
+            $twoFactorEntity = $this->twoFactorProvider->getEntity($user);
+            if (!$twoFactorAuthenticator->isDispatched($twoFactorEntity)) {
+                throw new BadCredentialsException('Two Factor Authentication is not dispatched.');
+            }
+
+            if (!$twoFactorAuthenticator->validate(
+                $twoFactorEntity,
+                $code
+            )) {
+                throw new BadCredentialsException(
+                    'Invalid Two Factor Credentials. Please provide a valid Auth code.'
+                );
+            }
+
+            $event->setResponse($this->security->login($user));
+        } catch (BadCredentialsException $e) {
+            $event->setResponse(new JsonResponse([
+                'error' => $e->getMessage(),
+                'requirements' => [
+                    'twoFactorAuthenticator' => [
+                        'authenticator' => $twoFactorEntity->getTwoFactorAuthenticator(),
+                        'fields' => [
+                            'user',
+                            'code',
                         ],
                     ],
-                ]));
-            }
+                ],
+            ]));
         }
     }
 
