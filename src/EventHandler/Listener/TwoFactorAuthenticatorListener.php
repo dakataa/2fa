@@ -4,22 +4,20 @@ namespace Dakataa\Security\TwoFactorAuthenticator\EventHandler\Listener;
 
 
 use Dakataa\Security\TwoFactorAuthenticator\Authentication\Token\TwoFactorAuthenticationToken;
+use Dakataa\Security\TwoFactorAuthenticator\EventHandler\Event\TwoFactorActivateEvent;
 use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticatorProvider;
 use Exception;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\DependencyInjection\ParameterBag\ParameterBagInterface;
 use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
-use Symfony\Component\HttpFoundation\Session\SessionInterface;
 use Symfony\Component\HttpKernel\Event\RequestEvent;
 use Symfony\Component\PropertyAccess\PropertyAccess;
 use Symfony\Component\Routing\RouterInterface;
 use Symfony\Component\Security\Core\Exception\BadCredentialsException;
-use Symfony\Component\Security\Core\User\UserInterface;
 use Symfony\Component\Security\Core\User\UserProviderInterface;
-use Symfony\Component\Security\Http\Authenticator\AuthenticatorInterface;
-use Symfony\Component\Security\Http\Authenticator\Passport\Badge\UserBadge;
 use Symfony\Component\Security\Http\Authenticator\Passport\Credentials\PasswordCredentials;
 use Symfony\Component\Security\Http\Event\AuthenticationTokenCreatedEvent;
 use Symfony\Component\Security\Http\Event\LoginSuccessEvent;
@@ -34,6 +32,7 @@ final class TwoFactorAuthenticatorListener
     public function __construct(
         private HttpUtils $httpUtils,
         private RouterInterface $router,
+        private readonly EventDispatcherInterface $eventDispatcher,
         private readonly TwoFactorAuthenticatorProvider $twoFactorProvider,
         private readonly ParameterBagInterface $parameterBag,
         private readonly UserProviderInterface $userProvider,
@@ -50,7 +49,7 @@ final class TwoFactorAuthenticatorListener
             return;
         }
 
-        if(!$event->getPassport()->hasBadge(PasswordCredentials::class)) {
+        if (!$event->getPassport()->hasBadge(PasswordCredentials::class)) {
             return;
         }
 
@@ -77,6 +76,10 @@ final class TwoFactorAuthenticatorListener
         }
 
         $twoFactorEntity = $this->twoFactorProvider->getEntity($token->getUser());
+        if (!$twoFactorEntity->isTwoFactorActive()) {
+            return;
+        }
+
         if ($twoFactorAuthenticator->isDispatched($twoFactorEntity)) {
             $twoFactorAuthenticator->dispatch($twoFactorEntity);
         }
@@ -84,7 +87,21 @@ final class TwoFactorAuthenticatorListener
         $request = $event->getRequest();
         $response = match ($request->getContentTypeFormat()) {
             'json' => new JsonResponse([
-                'challenge' => '2fa',
+                'challenge' => [
+                    'type' => $twoFactorEntity->getTwoFactorAuthenticator(),
+                    'url' => $this->httpUtils->generateUri(
+                        $request,
+                        $this->parameterBag->get('dakataa_two_factor_authenticator.code.check')
+                    ),
+                    'required_fields' => [
+                        ...(!$request->getSession()->isStarted() ? [
+                            $this->parameterBag->get(
+                                'dakataa_two_factor_authenticator.username_path'
+                            ),
+                        ] : []),
+                        $this->parameterBag->get('dakataa_two_factor_authenticator.code.field_path'),
+                    ],
+                ],
             ]),
             default => (function () use ($request) {
                 $codeForm = $this->parameterBag->get('dakataa_two_factor_authenticator.code.form');
@@ -114,6 +131,11 @@ final class TwoFactorAuthenticatorListener
             return;
         }
 
+        $this->codeCheckRequestHandler($event);
+    }
+
+    private function codeCheckRequestHandler(RequestEvent $event): void
+    {
         $codeCheckRoute = $this->parameterBag->get('dakataa_two_factor_authenticator.code.check');
         if (!$this->httpUtils->checkRequestPath($event->getRequest(), $codeCheckRoute)) {
             return;
@@ -135,9 +157,11 @@ final class TwoFactorAuthenticatorListener
                 explode(
                     '.',
                     trim(
-                        str_replace(['[', ']'],
+                        str_replace(
+                            ['[', ']'],
                             ['', '.'],
-                            $this->parameterBag->get('dakataa_two_factor_authenticator.code.field_path')),
+                            $this->parameterBag->get($path)
+                        ),
                         '.'
                     )
                 )
@@ -146,7 +170,7 @@ final class TwoFactorAuthenticatorListener
 
         try {
             $codeAccessorPath = $getAccessorPath('dakataa_two_factor_authenticator.code.field_path');
-            $usernameAccessPath =  $getAccessorPath('dakataa_two_factor_authenticator.username_path');
+            $usernameAccessorPath = $getAccessorPath('dakataa_two_factor_authenticator.username_path');
 
             $requestData = match ($request->getContentTypeFormat()) {
                 'form' => $request->request->all(),
@@ -158,9 +182,18 @@ final class TwoFactorAuthenticatorListener
                 )
             };
 
-            $propertyAccessor = PropertyAccess::createPropertyAccessorBuilder()->disableExceptionOnInvalidPropertyPath()->getPropertyAccessor();
-            $username = $request->getSession()->isStarted() ? $request->getSession()->get(SecurityRequestAttributes::LAST_USERNAME) : $propertyAccessor->getValue($requestData, $usernameAccessPath);
+            $propertyAccessor = PropertyAccess::createPropertyAccessorBuilder()
+                ->disableExceptionOnInvalidPropertyPath()
+                ->getPropertyAccessor();
+
+            $username = $request->getSession()->isStarted() ? $request->getSession()->get(
+                SecurityRequestAttributes::LAST_USERNAME
+            ) : $propertyAccessor->getValue($requestData, $usernameAccessorPath);
             $code = $propertyAccessor->getValue($requestData, $codeAccessorPath);
+
+            if (!$username) {
+                throw new BadCredentialsException('Invalid Username.');
+            }
 
             if (!$code) {
                 throw new BadCredentialsException('Invalid Auth Code.');
@@ -182,25 +215,33 @@ final class TwoFactorAuthenticatorListener
                 $code
             )) {
                 throw new BadCredentialsException(
-                    'Invalid Two Factor Credentials. Please provide a valid Auth code.'
+                    'Invalid Two Factor Credentials.'
                 );
             }
 
-            $event->setResponse($this->security->login($user));
-        } catch (BadCredentialsException $e) {
+            if ($twoFactorEntity->isTwoFactorActive()) {
+                $event->setResponse($this->security->login($user));
+            } else {
+                $this->eventDispatcher->dispatch(new TwoFactorActivateEvent($user, $twoFactorEntity));
+            }
+        } catch (Throwable $e) {
             $event->setResponse(new JsonResponse([
-                'error' => $e->getMessage(),
+                'message' => 'Invalid Credentials',
+                'originalMessage' => $e->getMessage(),
                 'requirements' => [
                     'twoFactorAuthenticator' => [
-                        'authenticator' => $twoFactorEntity->getTwoFactorAuthenticator(),
                         'fields' => [
-                            'user',
-                            'code',
+                            ...(!$request->getSession()->isStarted() ? [
+                                $this->parameterBag->get(
+                                    'dakataa_two_factor_authenticator.username_path'
+                                ),
+                            ] : []),
+                            $this->parameterBag->get('dakataa_two_factor_authenticator.code.field_path'),
                         ],
                     ],
                 ],
-            ]));
+            ], 400));
         }
-    }
 
+    }
 }

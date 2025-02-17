@@ -14,6 +14,7 @@ use Symfony\Component\Security\Core\User\UserInterface;
 
 class TwoFactorAuthenticatorProvider
 {
+    private array $entities = [];
 
     public function __construct(
         #[AutowireLocator('security.twoFactorAuthenticator')] private readonly ServiceLocator $serviceLocator,
@@ -24,14 +25,15 @@ class TwoFactorAuthenticatorProvider
 
     public function getEntity(UserInterface $user): ?TwoFactorAuthenticatorEntityInterface
     {
+        if (!$this->eventDispatcher->hasListeners(TwoFactorEntityInvokingEvent::class)) {
+            return null;
+        }
+
         $twoFactorInvokingEvent = new TwoFactorEntityInvokingEvent($user);
         $this->eventDispatcher->dispatch($twoFactorInvokingEvent);
 
-        if(!$this->eventDispatcher->hasListeners(TwoFactorEntityInvokingEvent::class)) {
-            throw new Exception('TwoFactorEntityInvokingEvent::class has no handler registered.');
-        }
-
         return $twoFactorInvokingEvent->getEntity();
+
     }
 
     public function getAuthenticator(
@@ -39,7 +41,7 @@ class TwoFactorAuthenticatorProvider
         string|null $optionalAuthenticator = null
     ): ?TwoFactorAuthenticatorInterface {
         $entity = $this->getEntity($user);
-        $authenticator = $entity?->getTwoFactorAuthenticator() ?: $optionalAuthenticator;
+        $authenticator = $optionalAuthenticator ?: $entity?->getTwoFactorAuthenticator();
 
         if(!$authenticator) {
             return null;
@@ -61,17 +63,24 @@ class TwoFactorAuthenticatorProvider
         return new $fqcn;
     }
 
-    public function setupProvider(UserInterface $user, string $authenticator = null): void
+    public function setupProvider(UserInterface $user, string $authenticatorName): TwoFactorAuthenticatorEntityInterface
     {
-        $parameters = $this->getAuthenticator($user, $authenticator)->setup($user);
-
-        $event = new TwoFactorSetupEvent($user, new TwoFactorAuthenticatorEntity($user->getUserIdentifier(), 'otp', $parameters));
-
-        $this->eventDispatcher->dispatch($event);
-
         if(!$this->eventDispatcher->hasListeners(TwoFactorSetupEvent::class)) {
             throw new Exception('Two Step Authenticator has not provided Setup handler to process.');
         }
 
+        $authenticator = $this->getAuthenticator($user, $authenticatorName);
+        $parameters = $authenticator->setup($user);
+
+        $entity = new TwoFactorAuthenticatorEntity(
+            $user->getUserIdentifier(),
+            $authenticatorName,
+            $parameters
+        );
+
+        $event = new TwoFactorSetupEvent($user, $entity);
+        $this->eventDispatcher->dispatch($event);
+
+        return $entity;
     }
 }

@@ -17,7 +17,7 @@ class TwoFactorAuthenticatorStorage implements TwoFactorAuthenticatorSessionStor
 
     public function has(TwoFactorAuthenticatorEntityInterface $entity): bool
     {
-        return $this->twoFactorAuthenticatorCache->hasItem($entity->getTwoFactorIdentifier());
+        return $this->twoFactorAuthenticatorCache->hasItem($this->getItemKey($entity));
     }
 
     public function get(TwoFactorAuthenticatorEntityInterface $entity): TwoFactorSessionInterface
@@ -26,7 +26,7 @@ class TwoFactorAuthenticatorStorage implements TwoFactorAuthenticatorSessionStor
             throw new Exception('Missing 2FA Session.');
         }
 
-        $cacheItem = $this->twoFactorAuthenticatorCache->getItem($entity->getTwoFactorIdentifier());
+        $cacheItem = $this->twoFactorAuthenticatorCache->getItem($this->getItemKey($entity));
         $data = $cacheItem->get();
         if (false === $data instanceof TwoFactorSessionInterface) {
             throw new Exception('Invalid Session');
@@ -41,7 +41,7 @@ class TwoFactorAuthenticatorStorage implements TwoFactorAuthenticatorSessionStor
         TwoFactorSessionInterface $session
     ): void {
 
-        $item = $this->twoFactorAuthenticatorCache->getItem($entity->getTwoFactorIdentifier());
+        $item = $this->twoFactorAuthenticatorCache->getItem($this->getItemKey($entity));
 
         $item->set($session)
             ->expiresAfter(new DateInterval(sprintf('PT%dS', $session->getTTL())));
@@ -53,6 +53,11 @@ class TwoFactorAuthenticatorStorage implements TwoFactorAuthenticatorSessionStor
 
     public function invalidate(TwoFactorAuthenticatorEntityInterface $entity): void
     {
-        $this->twoFactorAuthenticatorCache->deleteItem($entity->getTwoFactorIdentifier());
+        $this->twoFactorAuthenticatorCache->deleteItem($this->getItemKey($entity));
+    }
+
+    private function getItemKey(TwoFactorAuthenticatorEntityInterface $entity): string
+    {
+        return sha1($entity->getTwoFactorIdentifier());
     }
 }

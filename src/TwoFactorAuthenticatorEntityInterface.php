@@ -11,4 +11,6 @@ interface TwoFactorAuthenticatorEntityInterface
 
     public function getTwoFactorParameters(): array|null;
 
+    public function isTwoFactorActive(): bool;
+
 }

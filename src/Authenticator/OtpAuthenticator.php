@@ -45,16 +45,11 @@ class OtpAuthenticator implements TwoFactorAuthenticatorInterface {
 
     public function isDispatched(TwoFactorAuthenticatorEntityInterface $entity): bool
     {
-        return $this->supports($entity);
+        return !empty($entity->getTwoFactorParameters()['secret']);
     }
 
     public function getTTL(): int
     {
         return 30;
-    }
-
-    public function supports(TwoFactorAuthenticatorEntityInterface $entity): bool
-    {
-        return !empty($entity->getTwoFactorParameters()['secret']);
     }
 }
