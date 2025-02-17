@@ -27,6 +27,9 @@ abstract class AbstractAuthenticator implements TwoFactorAuthenticatorInterface
 
     public function dispatch(TwoFactorAuthenticatorEntityInterface $entity): void
     {
+        if($this->isDispatched($entity))
+            return;
+
         $code = mt_rand(1000, 9999);
         $session = new TwoFactorSession($code, $this->getTTL());
         $this->sessionStorage->set($entity, $session);

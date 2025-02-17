@@ -80,7 +80,7 @@ final class TwoFactorAuthenticatorListener
             return;
         }
 
-        if ($twoFactorAuthenticator->isDispatched($twoFactorEntity)) {
+        if (!$twoFactorAuthenticator->isDispatched($twoFactorEntity)) {
             $twoFactorAuthenticator->dispatch($twoFactorEntity);
         }
 
