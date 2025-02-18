@@ -30,8 +30,8 @@ final class TwoFactorAuthenticatorListener
     protected bool $enabled = false;
 
     public function __construct(
-        private HttpUtils $httpUtils,
-        private RouterInterface $router,
+        private readonly HttpUtils $httpUtils,
+        private readonly RouterInterface $router,
         private readonly EventDispatcherInterface $eventDispatcher,
         private readonly TwoFactorAuthenticatorProvider $twoFactorProvider,
         private readonly ParameterBagInterface $parameterBag,
@@ -91,20 +91,20 @@ final class TwoFactorAuthenticatorListener
                     'type' => $twoFactorEntity->getTwoFactorAuthenticator(),
                     'url' => $this->httpUtils->generateUri(
                         $request,
-                        $this->parameterBag->get('dakataa_two_factor_authenticator.code.check')
+                        $this->parameterBag->get('dakataa_two_factor_authenticator.check_path')
                     ),
                     'required_fields' => [
                         ...(!$request->getSession()->isStarted() ? [
                             $this->parameterBag->get(
-                                'dakataa_two_factor_authenticator.username_path'
+                                'dakataa_two_factor_authenticator.username_parameter'
                             ),
                         ] : []),
-                        $this->parameterBag->get('dakataa_two_factor_authenticator.code.field_path'),
+                        $this->parameterBag->get('dakataa_two_factor_authenticator.code_parameter'),
                     ],
                 ],
             ]),
             default => (function () use ($request) {
-                $codeForm = $this->parameterBag->get('dakataa_two_factor_authenticator.code.form');
+                $codeForm = $this->parameterBag->get('dakataa_two_factor_authenticator.form_path');
 
                 try {
                     if (!$this->router->getRouteCollection()->get($codeForm)) {
@@ -136,7 +136,7 @@ final class TwoFactorAuthenticatorListener
 
     private function codeCheckRequestHandler(RequestEvent $event): void
     {
-        $codeCheckRoute = $this->parameterBag->get('dakataa_two_factor_authenticator.code.check');
+        $codeCheckRoute = $this->parameterBag->get('dakataa_two_factor_authenticator.check_path');
         if (!$this->httpUtils->checkRequestPath($event->getRequest(), $codeCheckRoute)) {
             return;
         }
@@ -169,8 +169,8 @@ final class TwoFactorAuthenticatorListener
         );
 
         try {
-            $codeAccessorPath = $getAccessorPath('dakataa_two_factor_authenticator.code.field_path');
-            $usernameAccessorPath = $getAccessorPath('dakataa_two_factor_authenticator.username_path');
+            $codeAccessorPath = $getAccessorPath('dakataa_two_factor_authenticator.code_parameter');
+            $usernameAccessorPath = $getAccessorPath('dakataa_two_factor_authenticator.username_parameter');
 
             $requestData = match ($request->getContentTypeFormat()) {
                 'form' => $request->request->all(),
@@ -233,10 +233,10 @@ final class TwoFactorAuthenticatorListener
                         'fields' => [
                             ...(!$request->getSession()->isStarted() ? [
                                 $this->parameterBag->get(
-                                    'dakataa_two_factor_authenticator.username_path'
+                                    'dakataa_two_factor_authenticator.username_parameter'
                                 ),
                             ] : []),
-                            $this->parameterBag->get('dakataa_two_factor_authenticator.code.field_path'),
+                            $this->parameterBag->get('dakataa_two_factor_authenticator.code_parameter'),
                         ],
                     ],
                 ],
