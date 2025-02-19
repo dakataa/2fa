@@ -50,7 +50,7 @@ class TwoFactorController extends AbstractController
 	                'parameters' => $entity->getTwoFactorParameters()
 	            ]),
 	            default => new RedirectResponse('/2fa/form')
-	        }
+	        };
         }
 
         return $this->render('2fa/setup.html.twig');

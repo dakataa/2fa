@@ -104,19 +104,9 @@ final class TwoFactorAuthenticatorListener
                 ],
             ]),
             default => (function () use ($request) {
-                $codeForm = $this->parameterBag->get('dakataa_two_factor_authenticator.form_path');
-
-                try {
-                    if (!$this->router->getRouteCollection()->get($codeForm)) {
-                        $this->router->match($codeForm);
-                    }
-                } catch (Throwable) {
-                    throw new InvalidConfigurationException(sprintf('Missing route for 2FA code form: %s', $codeForm));
-                }
-
                 return $this->httpUtils->createRedirectResponse(
                     $request,
-                    $this->httpUtils->generateUri($request, $codeForm)
+                    $this->httpUtils->generateUri($request, $this->getFormRoute())
                 );
             })()
         };
@@ -223,25 +213,47 @@ final class TwoFactorAuthenticatorListener
                 $event->setResponse($this->security->login($user));
             } else {
                 $this->eventDispatcher->dispatch(new TwoFactorActivateEvent($user, $twoFactorEntity));
+
+                // TODO: Redirect
             }
         } catch (Throwable $e) {
-            $event->setResponse(new JsonResponse([
-                'message' => 'Invalid Credentials',
-                'originalMessage' => $e->getMessage(),
-                'requirements' => [
-                    'twoFactorAuthenticator' => [
-                        'fields' => [
-                            ...(!$request->getSession()->isStarted() ? [
-                                $this->parameterBag->get(
-                                    'dakataa_two_factor_authenticator.username_parameter'
-                                ),
-                            ] : []),
-                            $this->parameterBag->get('dakataa_two_factor_authenticator.code_parameter'),
+            match ($request->getContentTypeFormat()) {
+                'json' => $event->setResponse(new JsonResponse([
+                    'message' => 'Invalid Credentials',
+                    'originalMessage' => $e->getMessage(),
+                    'requirements' => [
+                        'twoFactorAuthenticator' => [
+                            'fields' => [
+                                ...(!$request->getSession()->isStarted() ? [
+                                    $this->parameterBag->get(
+                                        'dakataa_two_factor_authenticator.username_parameter'
+                                    ),
+                                ] : []),
+                                $this->parameterBag->get('dakataa_two_factor_authenticator.code_parameter'),
+                            ],
                         ],
                     ],
-                ],
-            ], 400));
+                ], 400)),
+                default => $event->setResponse($this->httpUtils->createRedirectResponse(
+                    $request,
+                    $this->httpUtils->generateUri($request, $this->getFormRoute())
+                ))
+            };
+        }
+    }
+
+    private function getFormRoute(): string
+    {
+        $route = $this->parameterBag->get('dakataa_two_factor_authenticator.form_path');
+
+        try {
+            if (!$this->router->getRouteCollection()->get($route)) {
+                $this->router->match($route);
+            }
+        } catch (Throwable) {
+            throw new InvalidConfigurationException(sprintf('Missing route for 2FA code form: %s', $route));
         }
 
+        return $route;
     }
 }
