@@ -13,6 +13,8 @@ use Symfony\Component\DependencyInjection\ParameterBag\ParameterBagInterface;
 use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
 use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\JsonResponse;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Event\RequestEvent;
 use Symfony\Component\PropertyAccess\PropertyAccess;
 use Symfony\Component\Routing\RouterInterface;
@@ -22,6 +24,7 @@ use Symfony\Component\Security\Http\Authenticator\Passport\Credentials\PasswordC
 use Symfony\Component\Security\Http\Event\AuthenticationTokenCreatedEvent;
 use Symfony\Component\Security\Http\Event\LoginSuccessEvent;
 use Symfony\Component\Security\Http\HttpUtils;
+use Symfony\Component\Security\Http\ParameterBagUtils;
 use Symfony\Component\Security\Http\SecurityRequestAttributes;
 use Throwable;
 
@@ -54,6 +57,11 @@ final class TwoFactorAuthenticatorListener
         }
 
         $parentToken = $event->getAuthenticatedToken();
+        $twoFactorEntity = $this->twoFactorProvider->getEntity($parentToken->getUser());
+        if(!$twoFactorEntity || false === $twoFactorEntity->isTwoFactorActive()) {
+            return;
+        }
+
         $token = new TwoFactorAuthenticationToken($parentToken->getUser());
         $event->setAuthenticatedToken($token);
     }
@@ -106,7 +114,7 @@ final class TwoFactorAuthenticatorListener
             default => (function () use ($request) {
                 return $this->httpUtils->createRedirectResponse(
                     $request,
-                    $this->httpUtils->generateUri($request, $this->getFormRoute())
+                    $this->httpUtils->generateUri($request, $this->getCodeFormPath())
                 );
             })()
         };
@@ -159,8 +167,8 @@ final class TwoFactorAuthenticatorListener
         );
 
         try {
-            $codeAccessorPath = $getAccessorPath('dakataa_two_factor_authenticator.code_parameter');
-            $usernameAccessorPath = $getAccessorPath('dakataa_two_factor_authenticator.username_parameter');
+            $codeParameterAccessorPath = $getAccessorPath('dakataa_two_factor_authenticator.code_parameter');
+            $usernameParameterAccessorPath = $getAccessorPath('dakataa_two_factor_authenticator.username_parameter');
 
             $requestData = match ($request->getContentTypeFormat()) {
                 'form' => $request->request->all(),
@@ -178,8 +186,8 @@ final class TwoFactorAuthenticatorListener
 
             $username = $request->getSession()->isStarted() ? $request->getSession()->get(
                 SecurityRequestAttributes::LAST_USERNAME
-            ) : $propertyAccessor->getValue($requestData, $usernameAccessorPath);
-            $code = $propertyAccessor->getValue($requestData, $codeAccessorPath);
+            ) : $propertyAccessor->getValue($requestData, $usernameParameterAccessorPath);
+            $code = $propertyAccessor->getValue($requestData, $codeParameterAccessorPath);
 
             if (!$username) {
                 throw new BadCredentialsException('Invalid Username.');
@@ -214,7 +222,12 @@ final class TwoFactorAuthenticatorListener
             } else {
                 $this->eventDispatcher->dispatch(new TwoFactorActivateEvent($user, $twoFactorEntity));
 
-                // TODO: Redirect
+                $event->setResponse(match ($request->getContentTypeFormat()) {
+                    'json' => new JsonResponse([
+                        'message' => 'Successful 2FA setup.',
+                    ]),
+                    default => new RedirectResponse($this->getTargetPath($request))
+                });
             }
         } catch (Throwable $e) {
             match ($request->getContentTypeFormat()) {
@@ -236,13 +249,13 @@ final class TwoFactorAuthenticatorListener
                 ], 400)),
                 default => $event->setResponse($this->httpUtils->createRedirectResponse(
                     $request,
-                    $this->httpUtils->generateUri($request, $this->getFormRoute())
+                    $this->httpUtils->generateUri($request, $this->getCodeFormPath())
                 ))
             };
         }
     }
 
-    private function getFormRoute(): string
+    private function getCodeFormPath(): string
     {
         $route = $this->parameterBag->get('dakataa_two_factor_authenticator.form_path');
 
@@ -255,5 +268,13 @@ final class TwoFactorAuthenticatorListener
         }
 
         return $route;
+    }
+
+    private function getTargetPath(Request $request): string
+    {
+        return $request->query->get(
+            $this->parameterBag->get('dakataa_two_factor_authenticator.target.parameter'),
+            $this->parameterBag->get('dakataa_two_factor_authenticator.target.path_default')
+        );
     }
 }
