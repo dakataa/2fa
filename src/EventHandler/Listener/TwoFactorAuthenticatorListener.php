@@ -6,7 +6,6 @@ namespace Dakataa\Security\TwoFactorAuthenticator\EventHandler\Listener;
 use Dakataa\Security\TwoFactorAuthenticator\Authentication\Token\TwoFactorAuthenticationToken;
 use Dakataa\Security\TwoFactorAuthenticator\EventHandler\Event\TwoFactorActivateEvent;
 use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticatorProvider;
-use Exception;
 use Symfony\Bundle\SecurityBundle\Security;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\DependencyInjection\ParameterBag\ParameterBagInterface;
@@ -18,13 +17,12 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Event\RequestEvent;
 use Symfony\Component\PropertyAccess\PropertyAccess;
 use Symfony\Component\Routing\RouterInterface;
-use Symfony\Component\Security\Core\Exception\BadCredentialsException;
+use Symfony\Component\Security\Core\Exception\AuthenticationException;
 use Symfony\Component\Security\Core\User\UserProviderInterface;
 use Symfony\Component\Security\Http\Authenticator\Passport\Credentials\PasswordCredentials;
 use Symfony\Component\Security\Http\Event\AuthenticationTokenCreatedEvent;
 use Symfony\Component\Security\Http\Event\LoginSuccessEvent;
 use Symfony\Component\Security\Http\HttpUtils;
-use Symfony\Component\Security\Http\ParameterBagUtils;
 use Symfony\Component\Security\Http\SecurityRequestAttributes;
 use Throwable;
 
@@ -184,55 +182,58 @@ final class TwoFactorAuthenticatorListener
                 ->disableExceptionOnInvalidPropertyPath()
                 ->getPropertyAccessor();
 
-            $username = $request->getSession()->isStarted() ? $request->getSession()->get(
-                SecurityRequestAttributes::LAST_USERNAME
-            ) : $propertyAccessor->getValue($requestData, $usernameParameterAccessorPath);
+            $username = $request->getSession()->isStarted() ? $request->getSession()->get(SecurityRequestAttributes::LAST_USERNAME) : $propertyAccessor->getValue($requestData, $usernameParameterAccessorPath);
             $code = $propertyAccessor->getValue($requestData, $codeParameterAccessorPath);
 
             if (!$username) {
-                throw new BadCredentialsException('Invalid Username.');
+                throw new AuthenticationException('Invalid Username.');
             }
 
             if (!$code) {
-                throw new BadCredentialsException('Invalid Auth Code.');
+                throw new AuthenticationException('Invalid Auth Code.');
             }
 
             $user = $this->userProvider->loadUserByIdentifier($username);
             $twoFactorAuthenticator = $this->twoFactorProvider->getAuthenticator($user);
             if (!$twoFactorAuthenticator) {
-                throw new Exception('Two Factor Authenticator not configured for this user.');
+                throw new AuthenticationException('Two Factor Authenticator not configured for this user.');
             }
 
             $twoFactorEntity = $this->twoFactorProvider->getEntity($user);
             if (!$twoFactorAuthenticator->isDispatched($twoFactorEntity)) {
-                throw new BadCredentialsException('Two Factor Authentication is not dispatched.');
+                throw new AuthenticationException('Two Factor Authentication is not dispatched.');
             }
 
             if (!$twoFactorAuthenticator->validate(
                 $twoFactorEntity,
                 $code
             )) {
-                throw new BadCredentialsException(
-                    'Invalid Two Factor Credentials.'
+                throw new AuthenticationException(
+                    'Invalid 2FA Credentials.'
                 );
             }
 
             if ($twoFactorEntity->isTwoFactorActive()) {
                 $event->setResponse($this->security->login($user));
             } else {
-                $this->eventDispatcher->dispatch(new TwoFactorActivateEvent($user, $twoFactorEntity));
-
-                $event->setResponse(match ($request->getContentTypeFormat()) {
+                $event = $this->eventDispatcher->dispatch(new TwoFactorActivateEvent($user, $twoFactorEntity));
+                $response = $event->getResponse() ?: match ($request->getContentTypeFormat()) {
                     'json' => new JsonResponse([
                         'message' => 'Successful 2FA setup.',
                     ]),
                     default => new RedirectResponse($this->getTargetPath($request))
-                });
+                };
+
+                $event->setResponse($response);
             }
-        } catch (Throwable $e) {
+        } catch (AuthenticationException $e) {
+            if ($request->getSession()->isStarted()) {
+                $request->getSession()->set(SecurityRequestAttributes::AUTHENTICATION_ERROR, $e);
+            }
+
             match ($request->getContentTypeFormat()) {
                 'json' => $event->setResponse(new JsonResponse([
-                    'message' => 'Invalid Credentials',
+                    'message' => 'Invalid 2FA Credentials',
                     'originalMessage' => $e->getMessage(),
                     'requirements' => [
                         'twoFactorAuthenticator' => [
