@@ -8,12 +8,12 @@ class TwoFactorActivateEvent extends TwoFactorSetupEvent
 {
     protected Response|null $response = null;
 
-    public function setResponse($response): void
+    public function setResponse(Response|null $response): void
     {
         $this->response = $response;
     }
 
-    public function getResponse(): Response
+    public function getResponse(): Response|null
     {
         return $this->response;
     }

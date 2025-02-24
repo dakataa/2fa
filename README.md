@@ -16,6 +16,7 @@ composer require dakataa/2fa
 ### config/packages/dakataa_2fa.yaml
 dakataa_two_factor_authenticator:
   enabled: true
+  firewall: main
   code_parameter: code
   username_parameter: username
   form_path: auth_2fa_form

@@ -7,6 +7,7 @@ use Dakataa\Security\TwoFactorAuthenticator\Authentication\Token\TwoFactorAuthen
 use Dakataa\Security\TwoFactorAuthenticator\EventHandler\Event\TwoFactorActivateEvent;
 use Dakataa\Security\TwoFactorAuthenticator\TwoFactorAuthenticatorProvider;
 use Symfony\Bundle\SecurityBundle\Security;
+use Symfony\Component\Config\Definition\Exception\Exception;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\DependencyInjection\ParameterBag\ParameterBagInterface;
 use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
@@ -91,7 +92,7 @@ final class TwoFactorAuthenticatorListener
         }
 
         $request = $event->getRequest();
-        $response = match ($request->getContentTypeFormat()) {
+        $response = match ($this->getResponseType($request)) {
             'json' => new JsonResponse([
                 'challenge' => [
                     'type' => $twoFactorEntity->getTwoFactorAuthenticator(),
@@ -168,7 +169,7 @@ final class TwoFactorAuthenticatorListener
             $codeParameterAccessorPath = $getAccessorPath('dakataa_two_factor_authenticator.code_parameter');
             $usernameParameterAccessorPath = $getAccessorPath('dakataa_two_factor_authenticator.username_parameter');
 
-            $requestData = match ($request->getContentTypeFormat()) {
+            $requestData = match ($this->getResponseType($request)) {
                 'form' => $request->request->all(),
                 'json' => $request->getPayload()->all(),
                 default => array_merge(
@@ -214,10 +215,14 @@ final class TwoFactorAuthenticatorListener
             }
 
             if ($twoFactorEntity->isTwoFactorActive()) {
-                $event->setResponse($this->security->login($user));
+                $response = $this->security->login($user, firewallName: $this->parameterBag->get('dakataa_two_factor_authenticator.firewall'));
+                if(!$response) {
+                    throw new Exception('Two Factor Authenticator failed to authenticate. Provide correct firewall in configuration.');
+                }
+                $event->setResponse($response);
             } else {
-                $event = $this->eventDispatcher->dispatch(new TwoFactorActivateEvent($user, $twoFactorEntity));
-                $response = $event->getResponse() ?: match ($request->getContentTypeFormat()) {
+                $activationEvent = $this->eventDispatcher->dispatch(new TwoFactorActivateEvent($user, $twoFactorEntity));
+                $response = $activationEvent->getResponse() ?: match ($this->getResponseType($request)) {
                     'json' => new JsonResponse([
                         'message' => 'Successful 2FA setup.',
                     ]),
@@ -231,7 +236,7 @@ final class TwoFactorAuthenticatorListener
                 $request->getSession()->set(SecurityRequestAttributes::AUTHENTICATION_ERROR, $e);
             }
 
-            match ($request->getContentTypeFormat()) {
+            match ($this->getResponseType($request)) {
                 'json' => $event->setResponse(new JsonResponse([
                     'message' => 'Invalid 2FA Credentials',
                     'originalMessage' => $e->getMessage(),
@@ -254,6 +259,11 @@ final class TwoFactorAuthenticatorListener
                 ))
             };
         }
+    }
+
+    private function getResponseType(Request $request): string
+    {
+        return $request->getContentTypeFormat() ?: $request->getRequestFormat();
     }
 
     private function getCodeFormPath(): string
